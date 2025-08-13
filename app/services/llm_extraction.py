@@ -11,6 +11,9 @@ from openai import OpenAI
 
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.environ["OPENROUTER_API_KEY"],
@@ -40,82 +43,14 @@ def pdf_to_data_urls(pdf_path: str, max_pages: int = 5, dpi: int = 200) -> list:
 
     return urls
 
-def llm_extract(file_path: str, model: str = "google/gemini-2.5-flash") -> dict:
-    if file_path.lower().endswith(".pdf"):
-        image_urls = pdf_to_data_urls(file_path, max_pages=5)
-    else:
-        # Fallback: treat as a single image
-        with Image.open(file_path) as img:
-            img.thumbnail((2000, 2000))
-            buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=80)
-            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-            image_urls = [f"data:image/jpeg;base64,{b64}"]
-
-
-
-    prompt = """
-    Extract the following fields from the provided document:
-    consignor, consignee, country of origin, country of destination,
-    HS Code, description of goods, means of transport, vessel.
-    Respond in valid JSON. If info is missing, use null.
-    """
-
-    content = [{"type": "text", "text": prompt}]
-    for url in image_urls:
-        content.append({"type": "image_url", "image_url": url})
-
-    if 'openai' in model:
-        completion = client.chat.completions.create(
-            extra_body={},
-            model="google/gemini-2.5-flash",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "Describe the image in 3 sentences max"
-                        },
-                        # {
-                        #     "type": "input_image",
-                        #     "image_url": f"data:image/jpeg;base64,{file_b64}"
-                        # }
-                        {
-                            "type": "input_image",
-                            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg",
-                        },
-                    ]
-                }
-            ]
-        )
-        return parse_structured_data(completion.choices[0].message.content)
-
-    else:
-        payload = {
-            "model": model,
-            "messages": [{"role": "user", "content": content}]
-        }
-
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        }
-
-        resp = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            json=payload,
-            headers=headers
-        )
-
-        try:
-            resp.raise_for_status()
-        except requests.HTTPError:
-            return {"error": f"{resp.status_code} - {resp.text}"}
-
-        try:
-            return parse_structured_data(resp.json()["choices"][0]["message"]["content"])
-        except Exception as e:
-            return {"error": str(e)}
+def image_file_to_data_url(image_path: str) -> str:
+    """Convert an image file to a base64 data URL."""
+    with Image.open(image_path) as img:
+        img.thumbnail((2000, 2000))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=80)
+        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        return f"data:image/jpeg;base64,{b64}"
 
 def parse_structured_data(data_str: str) -> dict:
     """Extracts JSON from Markdown code block, repairs it if broken, and returns dict."""
@@ -130,3 +65,54 @@ def parse_structured_data(data_str: str) -> dict:
         return json.loads(repaired)
     except json.JSONDecodeError as e:
         raise ValueError(f"Still invalid JSON after repair: {e}\nContent: {repaired}")
+
+def llm_extract(file_path: str, model: str = "google/gemini-2.5-flash") -> dict:
+    """
+    Extract structured fields from a document using OpenRouter-compatible LLMs.
+    Will use the `OpenAI` client if model format is compatible, else `requests`.
+    """
+    if file_path.lower().endswith(".pdf"):
+        image_urls = pdf_to_data_urls(file_path, max_pages=5)
+    else:
+        image_urls = [image_file_to_data_url(file_path)]
+
+    prompt = (
+        "Extract the following fields from the provided document:\n"
+        "consignor, consignee, country of origin, country of destination,\n"
+        "HS Code, description of goods, means of transport, vessel.\n"
+        "Respond in valid JSON. If info is missing, use null."
+    )
+
+    content = [{"type": "text", "text": prompt}] + [
+        {"type": "image_url", "image_url": url} for url in image_urls
+    ]
+
+    # Decide method based on known OpenAI chat API compatibility
+    if any(keyword in model.lower() for keyword in ["gpt", "claude", "gemini", "llama", "mistral"]):
+        try:
+            completion = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": content}],
+            )
+            message_content = completion.choices[0].message.content
+            return parse_structured_data(message_content)
+        except Exception as e:
+            return {"error": str(e)}
+
+    # Fallback: direct API request
+    else:
+        payload = {"model": model, "messages": [{"role": "user", "content": content}]}
+        headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
+
+        resp = requests.post(f"{OPENROUTER_BASE_URL}/chat/completions", json=payload, headers=headers)
+
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError:
+            return {"error": f"{resp.status_code} - {resp.text}"}
+
+        try:
+            message_content = resp.json()["choices"][0]["message"]["content"]
+            return parse_structured_data(message_content)
+        except Exception as e:
+            return {"error": str(e)}
