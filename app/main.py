@@ -11,7 +11,7 @@ app = FastAPI(title="Invoice Extraction PoC")
 
 
 @app.post("/extract")
-async def extract_invoice(file: UploadFile = File(...), mode: str = Form("llm")):
+async def extract_invoice(file: UploadFile = File(...), mode: str = Form("llm"), model: str = "google/gemini-2.5-flash"):
     # Save temp file
     with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as tmp:
         tmp.write(await file.read())
@@ -22,11 +22,11 @@ async def extract_invoice(file: UploadFile = File(...), mode: str = Form("llm"))
             text = ocr_extract_text(tmp_path)
             return JSONResponse(content={"raw_text": text})
         elif mode == "llm":
-            result = llm_extract(tmp_path)
+            result = llm_extract(tmp_path, model)
             return JSONResponse(content={"structured_data": result})
         elif mode == "both":
             text = ocr_extract_text(tmp_path)
-            result = llm_extract(tmp_path)
+            result = llm_extract(tmp_path, model)
             return JSONResponse(content={"ocr_text": text, "structured_data": result})
         else:
             return JSONResponse(content={"error": "Invalid mode"}, status_code=400)

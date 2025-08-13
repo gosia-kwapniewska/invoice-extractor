@@ -5,3 +5,5 @@ pytesseract
 requests
 uvicorn[standard]
 python-multipart
+openai
+json_repair
