@@ -1,2 +1,15 @@
 .env
- \.idea
+ .idea/
+ test_images/
+
+# PyCharm
+.idea/
+*.iml
+.env
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
