@@ -8,6 +8,7 @@ import fitz
 from json_repair import repair_json
 from PIL import Image
 from openai import OpenAI
+from app.prompt.prompt import prompt
 
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -76,12 +77,6 @@ def llm_extract(file_path: str, model: str = "google/gemini-2.5-flash") -> dict:
     else:
         image_urls = [image_file_to_data_url(file_path)]
 
-    prompt = (
-        "Extract the following fields from the provided document:\n"
-        "consignor, consignee, country of origin, country of destination,\n"
-        "HS Code, description of goods, means of transport, vessel.\n"
-        "Respond in valid JSON. If info is missing, use null."
-    )
 
     content = [{"type": "text", "text": prompt}] + [
         {"type": "image_url", "image_url": url} for url in image_urls

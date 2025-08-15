@@ -5,7 +5,6 @@
 # PyCharm
 .idea/
 *.iml
-.env
 
 # macOS
 .DS_Store

@@ -7,6 +7,7 @@ from PIL import Image
 import requests
 from json_repair import repair_json
 from typing import Dict
+from app.prompt.prompt import prompt
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
@@ -35,19 +36,12 @@ def llm_extract_text(text: str, model: str = "google/gemini-2.5-flash") -> Dict:
     if not text:
         return {"error": "No text to analyze."}
 
-    prompt = f"""
-    Extract the following fields from the document text provided:
-    consignor, consignee, country of origin, country of destination,
-    HS Code, description of goods, means of transport, vessel.
-    Respond in valid JSON. If info is missing, use null.
+    complete_prompt = prompt + "Document text:" + text
 
-    Document text:
-    {text}
-    """
 
     payload = {
         "model": model,
-        "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+        "messages": [{"role": "user", "content": [{"type": "text", "text": complete_prompt}]}],
     }
 
     headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
