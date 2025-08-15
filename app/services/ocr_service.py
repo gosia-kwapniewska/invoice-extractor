@@ -65,7 +65,7 @@ def llm_extract_text(text: str, model: str = "google/gemini-2.5-flash") -> Tuple
         if "usage" in resp_json:
             usage = resp_json["usage"]
 
-        return parsed_data, usage if usage else None
+        return parsed_data, usage
 
     except Exception as e:
         return {"error": str(e)}, None
