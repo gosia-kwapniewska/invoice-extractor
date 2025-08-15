@@ -70,13 +70,12 @@ def parse_structured_data(data_str: str) -> dict:
 def llm_extract(file_path: str, model: str = "google/gemini-2.5-flash") -> dict:
     """
     Extract structured fields from a document using OpenRouter-compatible LLMs.
-    Will use the `OpenAI` client if model format is compatible, else `requests`.
+    Also returns token usage if available.
     """
     if file_path.lower().endswith(".pdf"):
         image_urls = pdf_to_data_urls(file_path, max_pages=5)
     else:
         image_urls = [image_file_to_data_url(file_path)]
-
 
     content = [{"type": "text", "text": prompt}] + [
         {"type": "image_url", "image_url": url} for url in image_urls
@@ -90,7 +89,19 @@ def llm_extract(file_path: str, model: str = "google/gemini-2.5-flash") -> dict:
                 messages=[{"role": "user", "content": content}],
             )
             message_content = completion.choices[0].message.content
-            return parse_structured_data(message_content)
+            parsed_data = parse_structured_data(message_content)
+
+            # Include token usage if provided
+            usage_info = getattr(completion, "usage", None)
+            if usage_info:
+                usage = {
+                    "prompt_tokens": usage_info.prompt_tokens,
+                    "completion_tokens": usage_info.completion_tokens,
+                    "total_tokens": usage_info.total_tokens
+                }
+
+            return parsed_data, usage if usage else None
+
         except Exception as e:
             return {"error": str(e)}
 
@@ -107,7 +118,15 @@ def llm_extract(file_path: str, model: str = "google/gemini-2.5-flash") -> dict:
             return {"error": f"{resp.status_code} - {resp.text}"}
 
         try:
-            message_content = resp.json()["choices"][0]["message"]["content"]
-            return parse_structured_data(message_content)
+            resp_json = resp.json()
+            message_content = resp_json["choices"][0]["message"]["content"]
+            parsed_data = parse_structured_data(message_content)
+
+            # Include token usage if present
+            if "usage" in resp_json:
+                usage = resp_json["usage"]
+
+            return parsed_data, usage if usage else None
+
         except Exception as e:
             return {"error": str(e)}

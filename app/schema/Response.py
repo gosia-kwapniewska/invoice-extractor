@@ -5,3 +5,4 @@ class Response(BaseModel):
     structured_data: Dict
     model: str = None
     method: str
+    usage: dict = None
