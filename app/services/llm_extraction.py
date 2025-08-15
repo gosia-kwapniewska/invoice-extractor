@@ -1,6 +1,8 @@
 import io
 import json
 import re
+from typing import Tuple, Dict
+
 import requests
 import base64
 import os
@@ -67,7 +69,7 @@ def parse_structured_data(data_str: str) -> dict:
     except json.JSONDecodeError as e:
         raise ValueError(f"Still invalid JSON after repair: {e}\nContent: {repaired}")
 
-def llm_extract(file_path: str, model: str = "google/gemini-2.5-flash") -> dict:
+def llm_extract(file_path: str, model: str = "google/gemini-2.5-flash") -> Tuple[Dict, Dict | None]:
     """
     Extract structured fields from a document using OpenRouter-compatible LLMs.
     Also returns token usage if available.
@@ -93,6 +95,7 @@ def llm_extract(file_path: str, model: str = "google/gemini-2.5-flash") -> dict:
 
             # Include token usage if provided
             usage_info = getattr(completion, "usage", None)
+            usage = {}
             if usage_info:
                 usage = {
                     "prompt_tokens": usage_info.prompt_tokens,
@@ -103,7 +106,7 @@ def llm_extract(file_path: str, model: str = "google/gemini-2.5-flash") -> dict:
             return parsed_data, usage if usage else None
 
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": str(e)}, None
 
     # Fallback: direct API request
     else:
@@ -115,7 +118,7 @@ def llm_extract(file_path: str, model: str = "google/gemini-2.5-flash") -> dict:
         try:
             resp.raise_for_status()
         except requests.HTTPError:
-            return {"error": f"{resp.status_code} - {resp.text}"}
+            return {"error": f"{resp.status_code} - {resp.text}"}, None
 
         try:
             resp_json = resp.json()
@@ -123,10 +126,11 @@ def llm_extract(file_path: str, model: str = "google/gemini-2.5-flash") -> dict:
             parsed_data = parse_structured_data(message_content)
 
             # Include token usage if present
+            usage = {}
             if "usage" in resp_json:
                 usage = resp_json["usage"]
 
             return parsed_data, usage if usage else None
 
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": str(e)}, None
